@@ -528,7 +528,36 @@
            MUSCLE MAP SYSTEM — VIEW 6
         ============================================= */
 
-        /* ── Muscle selector in exercise card ── */
+        /* ── Routine exercise builder rows ── */
+        .routine-ex-row {
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: var(--r-md); padding: 14px 16px; margin-bottom: 10px;
+            animation: fade-up 0.3s cubic-bezier(0.22,1,0.36,1) forwards;
+        }
+        .routine-ex-top { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+        .routine-ex-num { font-family: var(--font-display); font-size: 1.1rem; color: var(--text-3); flex-shrink: 0; width: 20px; }
+        .routine-ex-name {
+            flex: 1; background: rgba(0,0,0,0.3); border: 1px solid var(--border);
+            color: var(--text); padding: 10px 14px; border-radius: var(--r-sm);
+            font-size: 0.95rem; font-family: var(--font-body); font-weight: 600;
+            transition: border-color 0.2s;
+        }
+        .routine-ex-name:focus { border-color: var(--cyan); }
+        .routine-ex-name::placeholder { color: var(--text-3); }
+        .routine-ex-remove { color: var(--text-3); cursor: pointer; font-size: 1.1rem; padding: 4px 6px; transition: color 0.15s; flex-shrink: 0; }
+        .routine-ex-remove:hover { color: var(--red); }
+        .routine-ex-muscles { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding-left: 30px; }
+        .routine-muscle-btn {
+            display: inline-flex; align-items: center; gap: 4px;
+            padding: 4px 10px; border-radius: 99px; font-size: 10px; font-weight: 700;
+            border: 1px dashed rgba(255,255,255,0.2); background: transparent;
+            color: var(--text-2); cursor: pointer; transition: all 0.15s;
+            text-transform: uppercase; letter-spacing: 0.05em;
+        }
+        .routine-muscle-btn:hover { border-color: var(--cyan); color: var(--cyan); }
+        .routine-muscle-btn.has-muscles { border-style: solid; border-color: rgba(0,212,255,0.3); background: rgba(0,212,255,0.08); color: var(--cyan); }
+
+        /* ── Muscle selector in exercise card (session - read only display) ── */
         .muscle-row {
             display: flex; gap: 8px; align-items: center;
             margin-top: 10px; flex-wrap: wrap;
@@ -872,16 +901,20 @@
                     <label class="form-label">Nombre de la Rutina</label>
                     <input type="text" id="routine-name-input" placeholder="Ej. Torso Pesado">
                 </div>
-                <div class="form-group">
-                    <label class="form-label">Ejercicios (Uno por línea)</label>
-                    <textarea id="routine-exercises-input" rows="8" placeholder="Press Banca&#10;Dominadas&#10;Remo con Barra"></textarea>
-                </div>
-                <div style="display:grid; grid-template-columns:1fr 2fr; gap:12px; margin-top:24px;">
-                    <button class="btn btn-secondary" onclick="switchView('routines')">Cancelar</button>
-                    <button class="btn btn-primary" onclick="saveRoutine()">Guardar Rutina</button>
-                </div>
-                <button class="btn btn-danger" id="btn-delete-routine" style="margin-top:12px;" onclick="deleteRoutine()">Eliminar Rutina</button>
             </div>
+
+            <!-- Exercise builder list -->
+            <div id="routine-exercises-builder"></div>
+
+            <button class="btn btn-secondary" style="border-style:dashed; margin-bottom:14px;" onclick="addRoutineExerciseRow()">
+                + Agregar ejercicio
+            </button>
+
+            <div style="display:grid; grid-template-columns:1fr 2fr; gap:12px; margin-bottom:12px;">
+                <button class="btn btn-secondary" onclick="switchView('routines')">Cancelar</button>
+                <button class="btn btn-primary" onclick="saveRoutine()">Guardar Rutina</button>
+            </div>
+            <button class="btn btn-danger" id="btn-delete-routine" style="margin-bottom:20px;" onclick="deleteRoutine()">Eliminar Rutina</button>
         </div>
 
         <!-- =================== VIEW 4: SESSION EDITOR =================== -->
@@ -1330,8 +1363,15 @@ function startSession(routine) {
     if (ni) ni.value = '';
     const cont = document.getElementById('exercises-container');
     if (cont) cont.innerHTML = '';
+
     if (routine.exercises && routine.exercises.length > 0) {
-        routine.exercises.forEach(n => addExerciseBlock({ name: n, sets: [{weight:'',reps:'',rpe:'',note:''}] }));
+        routine.exercises.forEach(ex => {
+            // Support both old string format and new {name,primary,secondary} format
+            const exData = typeof ex === 'string'
+                ? { name: ex, primary: '', secondary: [], sets: [{ weight:'', reps:'', rpe:'', note:'' }] }
+                : { name: ex.name, primary: ex.primary||'', secondary: ex.secondary||[], sets: [{ weight:'', reps:'', rpe:'', note:'' }] };
+            addExerciseBlock(exData);
+        });
     } else {
         addExerciseBlock();
     }
@@ -1347,21 +1387,28 @@ function addExerciseBlock(data = null) {
 
     const primary   = data?.primary   || '';
     const secondary = data?.secondary || [];
-    const primLabel = primary   ? `<span class="muscle-tag primary">🎯 ${MUSCLE_CATALOG.find(m=>m.id===primary)?.label||primary}</span>` : '';
-    const secLabels = secondary.map(s => `<span class="muscle-tag secondary">＋ ${MUSCLE_CATALOG.find(m=>m.id===s)?.label||s}</span>`).join('');
+
+    // Build muscle tags — read-only display, no picker button
+    let muscleTags = '';
+    if (primary) {
+        const pLabel = MUSCLE_CATALOG.find(m => m.id === primary)?.label || primary;
+        muscleTags += `<span class="muscle-tag primary">🎯 ${pLabel}</span>`;
+    }
+    secondary.forEach(s => {
+        const sLabel = MUSCLE_CATALOG.find(m => m.id === s)?.label || s;
+        muscleTags += `<span class="muscle-tag secondary">＋ ${sLabel}</span>`;
+    });
+
+    const muscleRow = muscleTags
+        ? `<div class="muscle-row" style="margin-top:8px;">${muscleTags}</div>`
+        : '';
 
     div.innerHTML = `
         <div class="exercise-header">
             <input class="ex-title" value="${data ? data.name : ''}" placeholder="Ejercicio">
             <div class="remove-icon" onclick="this.parentElement.parentElement.remove()">✕</div>
         </div>
-        <div class="muscle-row" id="muscle-row-${div.__uid = Date.now() + Math.random()}">
-            ${primLabel}${secLabels}
-            <span class="muscle-tag" style="border-style:dashed; font-size:10px;"
-                onclick="openMusclePicker(this.closest('.exercise-card'))">
-                ${primary ? '✏️ Editar' : '＋ Músculos'}
-            </span>
-        </div>
+        ${muscleRow}
         <div class="set-grid" style="margin-top:10px;">
             <div class="set-header">KGS</div><div class="set-header">REPS</div>
             <div class="set-header">RPE</div><div class="set-header">NOTA</div><div></div>
@@ -1370,7 +1417,7 @@ function addExerciseBlock(data = null) {
         <button class="btn btn-secondary add-action" style="margin-top:10px; font-size:0.78rem; padding:10px;" onclick="addSet(this)">+ Añadir Serie</button>
     `;
 
-    // Store muscle data directly on the element
+    // Keep muscle data on element for getSessionDataFromDOM
     div._primary   = primary;
     div._secondary = secondary;
 
@@ -1993,27 +2040,47 @@ function renderRoutinesList() {
 
 function openRoutineEditor(id=null) {
     currentRoutineId = id;
-    const ni = document.getElementById('routine-name-input');
-    const ei = document.getElementById('routine-exercises-input');
+    const ni     = document.getElementById('routine-name-input');
     const db_btn = document.getElementById('btn-delete-routine');
+    const builder = document.getElementById('routine-exercises-builder');
+
+    if (builder) builder.innerHTML = '';
+
     if (id) {
         const r = db.routines.find(x => x.id === id);
         if (ni) ni.value = r.name || '';
-        if (ei) ei.value = r.exercises ? r.exercises.join('\n') : '';
         if (db_btn) db_btn.style.display = 'block';
+        // Populate exercise rows — support both old string[] and new {name,primary,secondary}[]
+        const exList = (r.exercises || []).map(e =>
+            typeof e === 'string' ? { name: e, primary: '', secondary: [] } : e
+        );
+        exList.forEach(ex => addRoutineExerciseRow(ex));
     } else {
         if (ni) ni.value = '';
-        if (ei) ei.value = '';
         if (db_btn) db_btn.style.display = 'none';
+        addRoutineExerciseRow(); // start with one blank row
     }
     switchView('routine-editor');
 }
 
 function saveRoutine() {
     const name = document.getElementById('routine-name-input')?.value.trim();
-    const exStr = document.getElementById('routine-exercises-input')?.value || '';
-    const exercises = exStr.split('\n').map(e => e.trim()).filter(Boolean);
     if (!name) return alert("Ponle nombre a la rutina.");
+
+    // Collect exercises from builder rows
+    const exercises = [];
+    document.querySelectorAll('.routine-ex-row').forEach(row => {
+        const exName = row.querySelector('.routine-ex-name')?.value.trim();
+        if (!exName) return;
+        exercises.push({
+            name:      exName,
+            primary:   row._primary   || '',
+            secondary: row._secondary || []
+        });
+    });
+
+    if (!exercises.length) return alert("Agrega al menos un ejercicio.");
+
     const routine = { id: currentRoutineId || Date.now().toString(), name, exercises };
     if (currentRoutineId) {
         const idx = db.routines.findIndex(x => x.id === currentRoutineId);
@@ -2031,6 +2098,97 @@ function deleteRoutine() {
         saveData();
         switchView('routines');
     });
+}
+
+// ── ROUTINE EXERCISE BUILDER ──────────────────────
+function addRoutineExerciseRow(data = null) {
+    const builder = document.getElementById('routine-exercises-builder');
+    if (!builder) return;
+
+    const row = document.createElement('div');
+    row.className = 'routine-ex-row';
+    row._primary   = data?.primary   || '';
+    row._secondary = data?.secondary || [];
+
+    const idx = builder.querySelectorAll('.routine-ex-row').length + 1;
+    row.innerHTML = `
+        <div class="routine-ex-top">
+            <span class="routine-ex-num">${idx}</span>
+            <input class="routine-ex-name" placeholder="Nombre del ejercicio" value="${data?.name || ''}">
+            <span class="routine-ex-remove" onclick="this.closest('.routine-ex-row').remove(); renumberRoutineRows();">✕</span>
+        </div>
+        <div class="routine-ex-muscles">
+            <button class="routine-muscle-btn" onclick="openRoutineMusclePicker(this.closest('.routine-ex-row'))">
+                💪 Asignar músculos
+            </button>
+        </div>
+    `;
+
+    builder.appendChild(row);
+    updateRoutineMuscleBtn(row);
+}
+
+function renumberRoutineRows() {
+    document.querySelectorAll('.routine-ex-row').forEach((row, i) => {
+        const num = row.querySelector('.routine-ex-num');
+        if (num) num.textContent = i + 1;
+    });
+}
+
+function updateRoutineMuscleBtn(row) {
+    const btn = row.querySelector('.routine-muscle-btn');
+    if (!btn) return;
+    const p = row._primary;
+    const s = row._secondary || [];
+    if (p) {
+        const pLabel = MUSCLE_CATALOG.find(m => m.id === p)?.label || p;
+        const sLabels = s.map(id => MUSCLE_CATALOG.find(m => m.id === id)?.label || id);
+        const all = [pLabel, ...sLabels].join(', ');
+        btn.innerHTML = `💪 ${all}`;
+        btn.classList.add('has-muscles');
+    } else {
+        btn.innerHTML = '💪 Asignar músculos';
+        btn.classList.remove('has-muscles');
+    }
+}
+
+// Reuse the modal but set a flag for routine context
+let _pickerTarget = null; // { type: 'session'|'routine', ref: element }
+
+function openRoutineMusclePicker(row) {
+    _pickerTarget = { type: 'routine', ref: row };
+    _pickerCard   = null; // clear session picker ref
+
+    const name = row.querySelector('.routine-ex-name')?.value || 'Ejercicio';
+    setElText('modal-muscle-exname', name);
+
+    const primaryContainer   = document.getElementById('modal-primary-chips');
+    const secondaryContainer = document.getElementById('modal-secondary-chips');
+    if (!primaryContainer || !secondaryContainer) return;
+    primaryContainer.innerHTML   = '';
+    secondaryContainer.innerHTML = '';
+
+    const currentPrimary   = row._primary   || '';
+    const currentSecondary = row._secondary || [];
+
+    MUSCLE_CATALOG.forEach(m => {
+        const cp = document.createElement('div');
+        cp.className = 'muscle-chip' + (m.id === currentPrimary ? ' sel-primary' : '');
+        cp.textContent = `${m.icon} ${m.label}`;
+        cp.onclick = () => {
+            primaryContainer.querySelectorAll('.muscle-chip').forEach(c => c.classList.remove('sel-primary'));
+            cp.classList.add('sel-primary');
+        };
+        primaryContainer.appendChild(cp);
+
+        const cs = document.createElement('div');
+        cs.className = 'muscle-chip' + (currentSecondary.includes(m.id) ? ' sel-secondary' : '');
+        cs.textContent = `${m.icon} ${m.label}`;
+        cs.onclick = () => cs.classList.toggle('sel-secondary');
+        secondaryContainer.appendChild(cs);
+    });
+
+    openModal('modal-muscle');
 }
 
 // ── HISTORY ───────────────────────────────────────
@@ -2395,7 +2553,8 @@ function renderAlerts(stimulus) {
 let _pickerCard = null;
 
 function openMusclePicker(card) {
-    _pickerCard = card;
+    _pickerCard   = card;
+    _pickerTarget = { type: 'session', ref: card };
     const name = card.querySelector('.ex-title')?.value || 'Ejercicio';
     setElText('modal-muscle-exname', name);
 
@@ -2432,35 +2591,55 @@ function openMusclePicker(card) {
 }
 
 function saveMuscleSelection() {
-    if (!_pickerCard) { closeModal('modal-muscle'); return; }
+    // Resolve primary id
+    const allPrimaryChips   = Array.from(document.querySelectorAll('#modal-primary-chips .muscle-chip'));
+    const allSecondaryChips = Array.from(document.querySelectorAll('#modal-secondary-chips .muscle-chip'));
 
-    const primaryChips   = document.querySelectorAll('#modal-primary-chips .muscle-chip.sel-primary');
-    const secondaryChips = document.querySelectorAll('#modal-secondary-chips .muscle-chip.sel-secondary');
+    const selPrimary = allPrimaryChips.find(c => c.classList.contains('sel-primary'));
+    const primaryId  = selPrimary ? MUSCLE_CATALOG[allPrimaryChips.indexOf(selPrimary)]?.id || '' : '';
 
-    const primaryId   = primaryChips.length   ? MUSCLE_CATALOG[Array.from(document.querySelectorAll('#modal-primary-chips .muscle-chip')).indexOf(primaryChips[0])].id : '';
-    const secondaryIds = Array.from(secondaryChips).map(chip => {
-        const idx = Array.from(document.querySelectorAll('#modal-secondary-chips .muscle-chip')).indexOf(chip);
-        return MUSCLE_CATALOG[idx]?.id;
-    }).filter(Boolean).filter(id => id !== primaryId);
+    const secondaryIds = allSecondaryChips
+        .filter(c => c.classList.contains('sel-secondary'))
+        .map(c => MUSCLE_CATALOG[allSecondaryChips.indexOf(c)]?.id)
+        .filter(Boolean)
+        .filter(id => id !== primaryId);
 
-    _pickerCard._primary   = primaryId;
-    _pickerCard._secondary = secondaryIds;
+    // ── Apply to ROUTINE row ──────────────────────
+    if (_pickerTarget && _pickerTarget.type === 'routine') {
+        const row = _pickerTarget.ref;
+        row._primary   = primaryId;
+        row._secondary = secondaryIds;
+        updateRoutineMuscleBtn(row);
+        _pickerTarget = null;
+        closeModal('modal-muscle');
+        return;
+    }
 
-    // Refresh muscle row display
-    const row = _pickerCard.querySelector('.muscle-row');
-    if (row) {
-        const primLabel = primaryId ? `<span class="muscle-tag primary">🎯 ${MUSCLE_CATALOG.find(m=>m.id===primaryId)?.label||primaryId}</span>` : '';
-        const secLabels = secondaryIds.map(s => `<span class="muscle-tag secondary">＋ ${MUSCLE_CATALOG.find(m=>m.id===s)?.label||s}</span>`).join('');
-        row.innerHTML = `
+    // ── Apply to SESSION card (legacy path) ──────
+    const card = _pickerCard;
+    if (!card) { closeModal('modal-muscle'); return; }
+
+    card._primary   = primaryId;
+    card._secondary = secondaryIds;
+
+    // Refresh muscle row display in session card
+    const muscleRow = card.querySelector('.muscle-row');
+    if (muscleRow) {
+        const primLabel = primaryId
+            ? `<span class="muscle-tag primary">🎯 ${MUSCLE_CATALOG.find(m=>m.id===primaryId)?.label||primaryId}</span>` : '';
+        const secLabels = secondaryIds
+            .map(s => `<span class="muscle-tag secondary">＋ ${MUSCLE_CATALOG.find(m=>m.id===s)?.label||s}</span>`).join('');
+        muscleRow.innerHTML = `
             ${primLabel}${secLabels}
-            <span class="muscle-tag" style="border-style:dashed; font-size:10px;"
+            <span class="muscle-tag" style="border-style:dashed;font-size:10px;"
                 onclick="openMusclePicker(this.closest('.exercise-card'))">✏️ Editar</span>
         `;
     }
 
     saveAutoSave();
     closeModal('modal-muscle');
-    _pickerCard = null;
+    _pickerCard   = null;
+    _pickerTarget = null;
 }
 </script>
 </body>
